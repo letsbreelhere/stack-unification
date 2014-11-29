@@ -19,6 +19,7 @@ data CExp = Pop
           | I
           | Compose CExp CExp
           | Quote CExp
+          | Empty
           deriving (Show)
 
 data Type = TVar Int
@@ -46,12 +47,12 @@ instance Show StackType where
   show (as :# a) = unwords $ (map show as) ++ [showStack a]
 
 data Equation = TypeEquation Type Type
-              | StackEquation Int StackType
+              | StackEquation StackType StackType
               deriving (Eq)
 
 instance Show Equation where
   show (TypeEquation t t') = show t ++ " = " ++ show t'
-  show (StackEquation n s) = showStack n ++ " = " ++ show s
+  show (StackEquation n s) = show n ++ " = " ++ show s
 
 data IState =
   IState { _varMax :: Int
@@ -64,10 +65,6 @@ type Inference a = StateT IState Maybe a
 
 addEqn l r = modify $ \s -> s { _eqns = TypeEquation l r : _eqns s}
 addStackEqn l r = modify $ \s -> s { _eqns = StackEquation l r : _eqns s}
-
-addStackConstraints ([] :# l) (rs :# r) = addStackEqn l (rs :# r)
-addStackConstraints (ls :# l) ([] :# r) = addStackEqn r (ls :# l)
-addStackConstraints ((lv:ls) :# l) ((rv:rs) :# r) = addEqn lv rv >> addStackConstraints (ls :#l) (rs :#r)
 
 incVarPool :: Int -> Inference ()
 incVarPool k = modify $ \s -> s { _varMax = _varMax s + k }
@@ -95,9 +92,10 @@ typeOf I        = do s <- freshStackVar
                      return (Fun ([top] :# s) ([] :# s'))
 typeOf (Compose l r) = do Fun a b <- typeOf l
                           Fun c d <- typeOf r
-                          addStackConstraints b c
+                          addStackEqn b c
                           return (Fun a d)
 typeOf SomeValue = return Concrete
+typeOf Empty = [] --> []
 
 prependInitialType :: Type -> Inference ()
 prependInitialType t = do v <- freshVar
@@ -152,18 +150,17 @@ stackOccursIn n (s :# n') = n == n' || any stackOccursIn' s
 
 type Unification = Either String [Equation]
 
-unifyFolder :: Int -> Equation -> [Equation] -> Unification
-unifyFolder keep e es = case e of
-  TypeEquation t t'  -> typeUnifyFolder keep t t' es
-  StackEquation n s' -> return $ map (substituteStack n s') es
+unifyFolder :: Equation -> [Equation] -> Unification
+unifyFolder e es = case e of
+  TypeEquation t t'  -> typeUnifyFolder t t' es
+  StackEquation s s' -> return $ unifyStacks es s s'
 
-typeUnifyFolder :: Int -> Type -> Type -> [Equation] -> Unification
-typeUnifyFolder keep t t' es = let e = TypeEquation t t' in case (t,t') of
-  (v@(TVar n), _) | n == keep -> return $ es `union` [e]
-                  | v == t' -> return es
+typeUnifyFolder :: Type -> Type -> [Equation] -> Unification
+typeUnifyFolder t t' es = let e = TypeEquation t t' in case (t,t') of
+  (v@(TVar n), _) | v == t' -> return es
                   | v `occursIn` t' -> Left $ "Occurs check failed; could not create cyclic type " ++ show e
-                  | otherwise -> return $ map (substituteEquation n t') es
-  (_, TVar _) -> typeUnifyFolder keep t' t es
+                  | otherwise -> return $ map (substituteEquation n t') es `union` [e]
+  (_, TVar _) -> typeUnifyFolder t' t es
   (Fun (ls :# l) (rs :# r), Fun (ls' :# l') (rs' :# r')) -> let es' = unifyStacks es (ls :# l) (ls' :# l')
                                                             in return $ unifyStacks es' (rs :# r) (rs' :# r')
   (Concrete, Concrete) -> return es
@@ -171,25 +168,25 @@ typeUnifyFolder keep t t' es = let e = TypeEquation t t' in case (t,t') of
   (Concrete, _) -> Left $ "Couldn't match type" ++ show Concrete ++ " with " ++ show t'
 
 unifyStacks :: [Equation] -> StackType -> StackType -> [Equation]
-unifyStacks es ([] :# a) b = map (substituteStack a b) es `union` [StackEquation a b]
+unifyStacks es e@([] :# a) b = map (substituteStack a b) es `union` [StackEquation e b]
 unifyStacks es (as :# a) ([] :# b) = unifyStacks es ([] :# b) (as :# a)
 unifyStacks es ((a':as) :# a) ((b':bs) :# b) = let rest = unifyStacks es (as :# a) (bs :# b)
                                                in es `union` [TypeEquation a' b'] `union` rest
 
-unifyStep :: Int -> [Equation] -> Unification
-unifyStep keep es = case es of
+unifyStep :: [Equation] -> Unification
+unifyStep es = case es of
   [] -> return []
-  (e:es') -> unifyFolder keep e es'
+  (e:es') -> unifyFolder e es'
 
 unifications :: CExp -> [Unification]
 unifications e = fromMaybe [] $ do
-  (v,s) <- inferType e
+  (_,s) <- inferType e
   let es = _eqns s
-  return $ iterate (>>= unifyStep v) (return es)
+  return $ iterate (>>= unifyStep) (return es)
 
 unifyType = (>>= headMay) . find solved . rights . takeWhile isRight . unifications
   where solved :: [Equation] -> Bool
         solved [TypeEquation _ _] = True
         solved _ = False
-        headMay [] = Nothing
-        headMay (TypeEquation a b:xs) = return b
+        headMay (TypeEquation _ b:_) = return b
+        headMay _ = Nothing
