@@ -2,13 +2,10 @@
 module Catype (CExp(..), unifyType) where
 
 import Control.Applicative
-import Control.Arrow
-import Data.Either
 import Data.Char
+import Data.Function
 import Data.List
 import Data.Maybe
-import Data.Tuple
-import Debug.Trace
 import Control.Monad.State
 
 data CExp = Pop
@@ -34,6 +31,7 @@ instance Show Type where
   show Concrete = "int"
   show (Fun (as :# a) (bs :# b)) = "(" ++ unwords (map show as ++ [showStack a]) ++ " -> " ++ unwords (map show bs ++ [showStack b]) ++ ")"
 
+showStack :: Int -> String
 showStack = map toUpper . show . TVar
 
 (-->) :: [Type] -> [Type] -> Inference Type
@@ -63,7 +61,10 @@ data IState =
 
 type Inference a = StateT IState Maybe a
 
+addEqn :: Type -> Type -> Inference ()
 addEqn l r = modify $ \s -> s { _eqns = TypeEquation l r : _eqns s}
+
+addStackEqn :: StackType -> StackType -> Inference ()
 addStackEqn l r = modify $ \s -> s { _eqns = StackEquation l r : _eqns s}
 
 incVarPool :: Int -> Inference ()
@@ -72,9 +73,13 @@ incVarPool k = modify $ \s -> s { _varMax = _varMax s + k }
 incStackVarPool :: Int -> Inference ()
 incStackVarPool k = modify $ \s -> s { _stackVarMax = _stackVarMax s + k }
 
+defaultState :: IState
 defaultState = IState 0 0 []
 
+freshVar :: Inference Type
 freshVar = TVar <$> (gets _varMax <* incVarPool 1)
+
+freshStackVar :: Inference Int
 freshStackVar = gets _stackVarMax <* incStackVarPool 1
 
 typeOf :: CExp -> Inference Type
@@ -94,13 +99,12 @@ typeOf (Compose l r) = do Fun a b <- typeOf l
                           Fun c d <- typeOf r
                           addStackEqn b c
                           return (Fun a d)
+typeOf (Quote e) = do t <- typeOf e
+                      [] --> [t]
 typeOf SomeValue = return Concrete
 typeOf Empty = [] --> []
 
-prependInitialType :: Type -> Inference ()
-prependInitialType t = do v <- freshVar
-                          addEqn v t
-
+inferType :: CExp -> Maybe (Int,IState)
 inferType e = flip runStateT defaultState $ do
   t <- typeOf e
   v@(TVar n) <- freshVar
@@ -184,9 +188,20 @@ unifications e = fromMaybe [] $ do
   let es = _eqns s
   return $ iterate (>>= unifyStep) (return es)
 
-unifyType = (>>= headMay) . find solved . rights . takeWhile isRight . unifications
-  where solved :: [Equation] -> Bool
-        solved [TypeEquation _ _] = True
-        solved _ = False
-        headMay (TypeEquation _ b:_) = return b
-        headMay _ = Nothing
+unifyType :: CExp -> Either String Type
+unifyType = fmap solution . findEither isUnifier "This should not happen" . unifications
+  where solution = rhs . maximumBy (compare `on` lhsSize)
+        rhs (TypeEquation  _ r) = r
+        rhs (StackEquation _ _) = error "Nope"
+        lhsSize (TypeEquation (TVar n) _) = n
+        lhsSize _ = -1
+
+findEither :: (b -> Bool) -> a -> [Either a b] -> Either a b
+findEither p err xs = case xs of
+  []        -> Left err
+  Left y:_  -> Left y
+  Right y:ys | p y -> Right y
+             | otherwise -> findEither p err ys
+
+isUnifier :: [Equation] -> Bool
+isUnifier es = undefined
