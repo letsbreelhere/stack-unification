@@ -1,7 +1,6 @@
 module Unification where
 
-import Control.Applicative ((<$>),(<*>))
-import Control.Monad.State (get,put,modify, runStateT)
+import Control.Monad.State (runStateT)
 import Types (Equation(..),Type(..),StackType(..))
 import Unification.Types
 
