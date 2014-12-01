@@ -4,7 +4,6 @@ module Catype where
 import Control.Applicative
 import Data.Char
 import Data.List
-import Debug.Trace
 import Control.Monad.State
 
 data CExp = Pop
@@ -105,35 +104,25 @@ inferType e = do (t,s) <- runStateT (typeOf e) defaultState
 type Unifier a = StateT [Equation] Maybe a
 
 unify :: Type -> [Equation] -> Maybe Type
-unify t es = do (t', es') <- runStateT (unify' es t) es
-                trace (show es') (return ())
-                if isUnified t'
-                  then return t'
-                  else unify t' es'
+unify t es = untilSame (unifyIter es t)
+
+untilSame :: Eq a => [a] -> a
+untilSame (x:x':xs) = if x == x' then x else untilSame (x':xs)
+
+unifyIter :: [Equation] -> Type -> [Maybe Type]
+unifyIter es t = h : rest
+  where (h,rest) = case runStateT (unify' es t) es of
+                     Just (t',es') -> (Just t',unifyIter es' t')
+                     Nothing -> (Nothing, repeat Nothing)
 
 unify' :: [Equation] -> Type -> Unifier Type
 unify' [] t = return t
 unify' (e:es) t = unifyStep t e >>= unify' es
 
-isUnified :: Type -> Bool
-isUnified t = case t of
-  Fun (as :# a) (bs :# b) -> null (nub (concatMap varsOf bs) \\ nub (concatMap varsOf as)) &&
-                             null (nub (a : concatMap stackVarsOf bs) \\ nub (b : concatMap stackVarsOf as))
-  _ -> True
-
-varsOf t = case t of
-  TVar k -> [k]
-  Fun (as :# a) (bs :# b) -> varsOf =<< (as++bs)
-  _ -> []
-
-stackVarsOf t = case t of
-  Fun (as :# a) (bs :# b) -> a : b : (stackVarsOf =<< (as++bs))
-  _ -> []
-
 unifyStep :: Type -> Equation -> Unifier Type
 unifyStep t e = let StackEquation s s' = e in case (s,s') of
   ([] :# a, _) -> substituteStackInType a s' t
-  (_, [] :# b) -> unifyStep t (StackEquation s' s)
+  (_, [] :# _) -> unifyStep t (StackEquation s' s)
   ((l:as) :# a, (r:bs) :# b) -> do es <- get
                                    put []
                                    es' <- mapM (substituteTypeInEquation l r) es
@@ -185,7 +174,7 @@ substituteTypeInStack l r (as :# a) = do as' <- mapM (substituteTypeInType l r) 
                                          return (as' :# a)
 
 substituteStackInType :: Int -> StackType -> Type -> Unifier Type
-substituteStackInType n a t | n `stackOccursIn` a = fail "Cyclic type"
+substituteStackInType n a _ | n `stackOccursIn` a = fail "Cyclic type"
 substituteStackInType n a t = case t of
   Fun b c -> Fun <$> (substituteStackInStack n a b) <*> (substituteStackInStack n a c)
   _ -> return t
