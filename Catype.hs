@@ -1,11 +1,10 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-module Catype (CExp(..), unifyType) where
+module Catype where
 
 import Control.Applicative
 import Data.Char
-import Data.Function
 import Data.List
-import Data.Maybe
+import Debug.Trace
 import Control.Monad.State
 
 data CExp = Pop
@@ -44,12 +43,10 @@ data StackType = [Type] :# Int
 instance Show StackType where
   show (as :# a) = unwords $ (map show as) ++ [showStack a]
 
-data Equation = TypeEquation Type Type
-              | StackEquation StackType StackType
+data Equation = StackEquation StackType StackType
               deriving (Eq)
 
 instance Show Equation where
-  show (TypeEquation t t') = show t ++ " = " ++ show t'
   show (StackEquation n s) = show n ++ " = " ++ show s
 
 data IState =
@@ -61,11 +58,8 @@ data IState =
 
 type Inference a = StateT IState Maybe a
 
-addEqn :: Type -> Type -> Inference ()
-addEqn l r = modify $ \s -> s { _eqns = TypeEquation l r : _eqns s}
-
-addStackEqn :: StackType -> StackType -> Inference ()
-addStackEqn l r = modify $ \s -> s { _eqns = StackEquation l r : _eqns s}
+addConstraint :: StackType -> StackType -> Inference ()
+addConstraint l r = modify $ \s -> s { _eqns = StackEquation l r : _eqns s}
 
 incVarPool :: Int -> Inference ()
 incVarPool k = modify $ \s -> s { _varMax = _varMax s + k }
@@ -97,111 +91,111 @@ typeOf I        = do s <- freshStackVar
                      return (Fun ([top] :# s) ([] :# s'))
 typeOf (Compose l r) = do Fun a b <- typeOf l
                           Fun c d <- typeOf r
-                          addStackEqn b c
+                          addConstraint b c
                           return (Fun a d)
 typeOf (Quote e) = do t <- typeOf e
                       [] --> [t]
 typeOf SomeValue = return Concrete
 typeOf Empty = [] --> []
 
-inferType :: CExp -> Maybe (Int,IState)
-inferType e = flip runStateT defaultState $ do
-  t <- typeOf e
-  v@(TVar n) <- freshVar
-  addEqn v t
-  return n
+inferType :: CExp -> Maybe (Type,[Equation])
+inferType e = do (t,s) <- runStateT (typeOf e) defaultState
+                 return (t,_eqns s)
 
-substituteType :: Int -> Type -> Type -> Type
-substituteType k t t' = case t' of
-  Concrete -> Concrete
-  TVar n -> if n == k then t else t'
-  Fun (ls :# l) (rs :# r) -> Fun (map (substituteType k t) ls :# l) (map (substituteType k t) rs :# r)
+type Unifier a = StateT [Equation] Maybe a
 
-substituteEquation :: Int -> Type -> Equation -> Equation
-substituteEquation k t e = case e of
-  TypeEquation u u' -> TypeEquation (substituteType k t u) (substituteType k t u')
-  StackEquation n s -> StackEquation n (substituteStackType k t s)
+unify :: Type -> [Equation] -> Maybe Type
+unify t es = do (t', es') <- runStateT (unify' es t) es
+                trace (show es') (return ())
+                if isUnified t'
+                  then return t'
+                  else unify t' es'
 
-substituteStack :: Int -> StackType -> Equation -> Equation
-substituteStack n s e = case e of
-  TypeEquation u u'   -> TypeEquation (substituteTypeStack n s u) (substituteTypeStack n s u')
-  StackEquation n' s' -> StackEquation n' (substituteStackType' n s s')
+unify' :: [Equation] -> Type -> Unifier Type
+unify' [] t = return t
+unify' (e:es) t = unifyStep t e >>= unify' es
 
-substituteStackType :: Int -> Type -> StackType -> StackType
-substituteStackType n t (as :# a) = map (substituteType n t) as :# a
+isUnified :: Type -> Bool
+isUnified t = case t of
+  Fun (as :# a) (bs :# b) -> null (nub (concatMap varsOf bs) \\ nub (concatMap varsOf as)) &&
+                             null (nub (a : concatMap stackVarsOf bs) \\ nub (b : concatMap stackVarsOf as))
+  _ -> True
 
-substituteStackType' :: Int -> StackType -> StackType -> StackType
-substituteStackType' n (us :# u) (as :# a) = let (as' :# a') = if a == n
-                                                               then (as ++ us) :# u
-                                                               else as :# a
-                                               in map (substituteTypeStack n (us :# u)) as' :# a'
+varsOf t = case t of
+  TVar k -> [k]
+  Fun (as :# a) (bs :# b) -> varsOf =<< (as++bs)
+  _ -> []
 
-substituteTypeStack :: Int -> StackType -> Type -> Type
-substituteTypeStack n s t = case t of
-  Fun l r -> Fun (substituteStackType' n s l) (substituteStackType' n s r)
+stackVarsOf t = case t of
+  Fun (as :# a) (bs :# b) -> a : b : (stackVarsOf =<< (as++bs))
+  _ -> []
+
+unifyStep :: Type -> Equation -> Unifier Type
+unifyStep t e = let StackEquation s s' = e in case (s,s') of
+  ([] :# a, _) -> substituteStackInType a s' t
+  (_, [] :# b) -> unifyStep t (StackEquation s' s)
+  ((l:as) :# a, (r:bs) :# b) -> do es <- get
+                                   put []
+                                   es' <- mapM (substituteTypeInEquation l r) es
+                                   modify (union es')
+                                   t' <- substituteTypeInType l r t
+                                   t'' <- unifyStep t' (StackEquation (as :# a) (bs :# b))
+                                   return t''
+
+substituteTypeInType :: Type -> Type -> Type -> Unifier Type
+substituteTypeInType l r t
+  | l == r = return t
+  | l `occursIn` r = fail "Cyclic type"
+  | otherwise = case (l,r) of
+                  (TVar n,_) -> return $ substituteTVarInType n r t
+                  (_,TVar _) -> substituteTypeInType r l t
+                  (Fun a b, Fun c d) -> do modify (`union` [StackEquation a c, StackEquation b d])
+                                           return t
+                  _ -> return t
+
+substituteTVarInType :: Int -> Type -> Type -> Type
+substituteTVarInType n r t = case t of
+  TVar n' | n == n'   -> r
+          | otherwise -> t
+  Fun (as :# a) (bs :# b) -> let as' = map (substituteTVarInType n r) as
+                                 bs' = map (substituteTVarInType n r) bs
+                             in Fun (as' :# a) (bs' :# b)
   _ -> t
 
 occursIn :: Type -> Type -> Bool
-occursIn l r = (l == r) || case r of
-  Fun (as :# _) (bs :# _) -> any (occursIn l) (as ++ bs)
-  _ -> False
+occursIn t t'
+  | t == t' = True
+  | otherwise = case t' of
+                  Fun (as :# _) (bs :# _) -> any (t `occursIn`) (as ++ bs)
+                  _ -> False
 
 stackOccursIn :: Int -> StackType -> Bool
-stackOccursIn n (s :# n') = n == n' || any stackOccursIn' s
+stackOccursIn n (as :# a) = n == a || any stackOccursIn' as
   where stackOccursIn' t = case t of
-          Fun l r -> n `stackOccursIn` l || n `stackOccursIn` r
+          Fun (xs :# x) (ys :# y) -> n == x || n == y || any stackOccursIn' (xs++ys)
           _ -> False
 
-type Unification = Either String [Equation]
+substituteTypeInEquation :: Type -> Type -> Equation -> Unifier Equation
+substituteTypeInEquation l r (StackEquation a b) = do a' <- substituteTypeInStack l r a
+                                                      b' <- substituteTypeInStack l r b
+                                                      return $ StackEquation a' b'
 
-unifyFolder :: Equation -> [Equation] -> Unification
-unifyFolder e es = case e of
-  TypeEquation t t'  -> typeUnifyFolder t t' es
-  StackEquation s s' -> return $ unifyStacks es s s'
+substituteTypeInStack :: Type -> Type -> StackType -> Unifier StackType
+substituteTypeInStack l r (as :# a) = do as' <- mapM (substituteTypeInType l r) as
+                                         return (as' :# a)
 
-typeUnifyFolder :: Type -> Type -> [Equation] -> Unification
-typeUnifyFolder t t' es = let e = TypeEquation t t' in case (t,t') of
-  (v@(TVar n), _) | v == t' -> return es
-                  | v `occursIn` t' -> Left $ "Occurs check failed; could not create cyclic type " ++ show e
-                  | otherwise -> return $ map (substituteEquation n t') es `union` [e]
-  (_, TVar _) -> typeUnifyFolder t' t es
-  (Fun (ls :# l) (rs :# r), Fun (ls' :# l') (rs' :# r')) -> let es' = unifyStacks es (ls :# l) (ls' :# l')
-                                                            in return $ unifyStacks es' (rs :# r) (rs' :# r')
-  (Concrete, Concrete) -> return es
-  (_, Concrete) -> Left $ "Couldn't match type" ++ show Concrete ++ " with " ++ show t
-  (Concrete, _) -> Left $ "Couldn't match type" ++ show Concrete ++ " with " ++ show t'
+substituteStackInType :: Int -> StackType -> Type -> Unifier Type
+substituteStackInType n a t | n `stackOccursIn` a = fail "Cyclic type"
+substituteStackInType n a t = case t of
+  Fun b c -> Fun <$> (substituteStackInStack n a b) <*> (substituteStackInStack n a c)
+  _ -> return t
 
-unifyStacks :: [Equation] -> StackType -> StackType -> [Equation]
-unifyStacks es e@([] :# a) b = map (substituteStack a b) es `union` [StackEquation e b]
-unifyStacks es (as :# a) ([] :# b) = unifyStacks es ([] :# b) (as :# a)
-unifyStacks es ((a':as) :# a) ((b':bs) :# b) = let rest = unifyStacks es (as :# a) (bs :# b)
-                                               in es `union` [TypeEquation a' b'] `union` rest
+substituteStackInStack :: Int -> StackType -> StackType -> Unifier StackType
+substituteStackInStack n (as :# a) (xs :# x) = do
+  xs' <- mapM (substituteStackInType n (as :# a)) xs
+  return $ if x == n
+    then (xs' ++ as) :# a
+    else xs' :# x
 
-unifyStep :: [Equation] -> Unification
-unifyStep es = case es of
-  [] -> return []
-  (e:es') -> unifyFolder e es'
-
-unifications :: CExp -> [Unification]
-unifications e = fromMaybe [] $ do
-  (_,s) <- inferType e
-  let es = _eqns s
-  return $ iterate (>>= unifyStep) (return es)
-
-unifyType :: CExp -> Either String Type
-unifyType = fmap solution . findEither isUnifier "This should not happen" . unifications
-  where solution = rhs . maximumBy (compare `on` lhsSize)
-        rhs (TypeEquation  _ r) = r
-        rhs (StackEquation _ _) = error "Nope"
-        lhsSize (TypeEquation (TVar n) _) = n
-        lhsSize _ = -1
-
-findEither :: (b -> Bool) -> a -> [Either a b] -> Either a b
-findEither p err xs = case xs of
-  []        -> Left err
-  Left y:_  -> Left y
-  Right y:ys | p y -> Right y
-             | otherwise -> findEither p err ys
-
-isUnifier :: [Equation] -> Bool
-isUnifier es = undefined
+substituteStackInEquation :: Int -> StackType -> Equation -> Unifier Equation
+substituteStackInEquation n s (StackEquation a b) = StackEquation <$> substituteStackInStack n s a <*> substituteStackInStack n s b
