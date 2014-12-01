@@ -42,11 +42,11 @@ data StackType = [Type] :# Int
 instance Show StackType where
   show (as :# a) = unwords $ (map show as) ++ [showStack a]
 
-data Equation = StackEquation StackType StackType
+data Equation = StackType :~ StackType
               deriving (Eq)
 
 instance Show Equation where
-  show (StackEquation n s) = show n ++ " = " ++ show s
+  show (n :~ s) = show n ++ " = " ++ show s
 
 data IState =
   IState { _varMax :: Int
@@ -58,7 +58,7 @@ data IState =
 type Inference a = StateT IState Maybe a
 
 addConstraint :: StackType -> StackType -> Inference ()
-addConstraint l r = modify $ \s -> s { _eqns = StackEquation l r : _eqns s}
+addConstraint l r = modify $ \s -> s { _eqns = l :~ r : _eqns s}
 
 incVarPool :: Int -> Inference ()
 incVarPool k = modify $ \s -> s { _varMax = _varMax s + k }
@@ -101,7 +101,16 @@ inferType :: CExp -> Maybe (Type,[Equation])
 inferType e = do (t,s) <- runStateT (typeOf e) defaultState
                  return (t,_eqns s)
 
-type Unifier a = StateT [Equation] Maybe a
+newtype Unifier a = Unifier { runUnifier :: StateT [Equation] Maybe a }
+  deriving (Functor, Applicative, Monad)
+
+addEqn :: Equation -> Unifier ()
+addEqn e = Unifier (modify (++[e]))
+
+getEqns :: Unifier [Equation]
+getEqns = Unifier get
+
+clearEqns = Unifier (put [])
 
 unify :: Type -> [Equation] -> Maybe Type
 unify t es = untilSame (unifyIter es t)
@@ -111,7 +120,7 @@ untilSame (x:x':xs) = if x == x' then x else untilSame (x':xs)
 
 unifyIter :: [Equation] -> Type -> [Maybe Type]
 unifyIter es t = h : rest
-  where (h,rest) = case runStateT (unify' es t) es of
+  where (h,rest) = case runStateT (runUnifier (unify' es t)) es of
                      Just (t',es') -> (Just t',unifyIter es' t')
                      Nothing -> (Nothing, repeat Nothing)
 
@@ -120,15 +129,15 @@ unify' [] t = return t
 unify' (e:es) t = unifyStep t e >>= unify' es
 
 unifyStep :: Type -> Equation -> Unifier Type
-unifyStep t e = let StackEquation s s' = e in case (s,s') of
+unifyStep t e = let s :~ s' = e in case (s,s') of
   ([] :# a, _) -> substituteStackInType a s' t
-  (_, [] :# _) -> unifyStep t (StackEquation s' s)
-  ((l:as) :# a, (r:bs) :# b) -> do es <- get
-                                   put []
+  (_, [] :# _) -> unifyStep t (s' :~ s)
+  ((l:as) :# a, (r:bs) :# b) -> do es <- getEqns
+                                   clearEqns
                                    es' <- mapM (substituteTypeInEquation l r) es
-                                   modify (union es')
+                                   mapM_ addEqn es'
                                    t' <- substituteTypeInType l r t
-                                   t'' <- unifyStep t' (StackEquation (as :# a) (bs :# b))
+                                   t'' <- unifyStep t' ((as :# a) :~ (bs :# b))
                                    return t''
 
 substituteTypeInType :: Type -> Type -> Type -> Unifier Type
@@ -138,7 +147,7 @@ substituteTypeInType l r t
   | otherwise = case (l,r) of
                   (TVar n,_) -> return $ substituteTVarInType n r t
                   (_,TVar _) -> substituteTypeInType r l t
-                  (Fun a b, Fun c d) -> do modify (`union` [StackEquation a c, StackEquation b d])
+                  (Fun a b, Fun c d) -> do mapM_ addEqn [a :~ c, b :~ d]
                                            return t
                   _ -> return t
 
@@ -165,9 +174,9 @@ stackOccursIn n (as :# a) = n == a || any stackOccursIn' as
           _ -> False
 
 substituteTypeInEquation :: Type -> Type -> Equation -> Unifier Equation
-substituteTypeInEquation l r (StackEquation a b) = do a' <- substituteTypeInStack l r a
-                                                      b' <- substituteTypeInStack l r b
-                                                      return $ StackEquation a' b'
+substituteTypeInEquation l r (a :~ b) = do a' <- substituteTypeInStack l r a
+                                           b' <- substituteTypeInStack l r b
+                                           return $ a' :~ b'
 
 substituteTypeInStack :: Type -> Type -> StackType -> Unifier StackType
 substituteTypeInStack l r (as :# a) = do as' <- mapM (substituteTypeInType l r) as
@@ -187,4 +196,4 @@ substituteStackInStack n (as :# a) (xs :# x) = do
     else xs' :# x
 
 substituteStackInEquation :: Int -> StackType -> Equation -> Unifier Equation
-substituteStackInEquation n s (StackEquation a b) = StackEquation <$> substituteStackInStack n s a <*> substituteStackInStack n s b
+substituteStackInEquation n s (a :~ b) = (:~) <$> substituteStackInStack n s a <*> substituteStackInStack n s b
