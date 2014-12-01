@@ -23,12 +23,12 @@ unify' (e:es) t = unifyStep t e >>= unify' es
 
 unifyStep :: Type -> Equation -> Unifier Type
 unifyStep t e = let s :~ s' = e in case (s,s') of
-  ([] :# a, _) -> substStack a s' t
+  ([] :# a, _) -> subst a s' t
   (_, [] :# _) -> unifyStep t (s' :~ s)
   ((l:as) :# a, (r:bs) :# b) -> do es <- getEqns
                                    clearEqns
                                    forM_ es $ \eqn -> do
-                                     eqn' <- substType l r eqn
+                                     eqn' <- subst l r eqn
                                      addEqn eqn'
                                    t' <- unifyStep t ((as :# a) :~ (bs :# b))
                                    return t'
