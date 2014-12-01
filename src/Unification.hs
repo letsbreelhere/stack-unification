@@ -1,108 +1,9 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-module Catype where
+module Unification where
 
-import Control.Applicative
-import Data.Char
-import Data.List
-import Control.Monad.State
-
-data CExp = Pop
-          | Dup
-          | Swap
-          | SomePush
-          | SomeValue
-          | I
-          | Compose CExp CExp
-          | Quote CExp
-          | Empty
-          deriving (Show)
-
-data Type = TVar Int
-          | Concrete
-          | Fun StackType StackType
-  deriving (Eq)
-
-instance Show Type where
-  show (TVar n)
-    | n < 26    = [toEnum (fromEnum n + fromEnum 'a')]
-    | otherwise = reverse $ show (TVar (n `mod` 26)) ++ show (TVar $ n `div` 26 - 1)
-  show Concrete = "int"
-  show (Fun (as :# a) (bs :# b)) = "(" ++ unwords (map show as ++ [showStack a]) ++ " -> " ++ unwords (map show bs ++ [showStack b]) ++ ")"
-
-showStack :: Int -> String
-showStack = map toUpper . show . TVar
-
-(-->) :: [Type] -> [Type] -> Inference Type
-s --> t = do n <- freshStackVar
-             return $ Fun (s :# n) (t :# n)
-
-data StackType = [Type] :# Int
-  deriving (Eq)
-
-instance Show StackType where
-  show (as :# a) = unwords $ (map show as) ++ [showStack a]
-
-data Equation = StackType :~ StackType
-              deriving (Eq)
-
-instance Show Equation where
-  show (n :~ s) = show n ++ " = " ++ show s
-
-data IState =
-  IState { _varMax :: Int
-         , _stackVarMax :: Int
-         , _eqns :: [Equation]
-         }
-  deriving (Show)
-
-type Inference a = StateT IState Maybe a
-
-addConstraint :: StackType -> StackType -> Inference ()
-addConstraint l r = modify $ \s -> s { _eqns = l :~ r : _eqns s}
-
-incVarPool :: Int -> Inference ()
-incVarPool k = modify $ \s -> s { _varMax = _varMax s + k }
-
-incStackVarPool :: Int -> Inference ()
-incStackVarPool k = modify $ \s -> s { _stackVarMax = _stackVarMax s + k }
-
-defaultState :: IState
-defaultState = IState 0 0 []
-
-freshVar :: Inference Type
-freshVar = TVar <$> (gets _varMax <* incVarPool 1)
-
-freshStackVar :: Inference Int
-freshStackVar = gets _stackVarMax <* incStackVarPool 1
-
-typeOf :: CExp -> Inference Type
-typeOf Pop      = do v <- freshVar
-                     [v] --> []
-typeOf Dup      = do v <- freshVar
-                     [v] --> [v, v]
-typeOf Swap     = do v <- freshVar
-                     v' <- freshVar
-                     [v, v'] --> [v', v]
-typeOf SomePush = [] --> [Concrete]
-typeOf I        = do s <- freshStackVar
-                     s' <- freshStackVar
-                     let top = Fun ([] :# s) ([] :# s')
-                     return (Fun ([top] :# s) ([] :# s'))
-typeOf (Compose l r) = do Fun a b <- typeOf l
-                          Fun c d <- typeOf r
-                          addConstraint b c
-                          return (Fun a d)
-typeOf (Quote e) = do t <- typeOf e
-                      [] --> [t]
-typeOf SomeValue = return Concrete
-typeOf Empty = [] --> []
-
-inferType :: CExp -> Maybe (Type,[Equation])
-inferType e = do (t,s) <- runStateT (typeOf e) defaultState
-                 return (t,_eqns s)
-
-newtype Unifier a = Unifier { runUnifier :: StateT [Equation] Maybe a }
-  deriving (Functor, Applicative, Monad)
+import Control.Applicative ((<$>),(<*>))
+import Control.Monad.State (get,put,modify, runStateT)
+import Types (Equation(..),Type(..),StackType(..))
+import Unification.Types (Unifier(..))
 
 addEqn :: Equation -> Unifier ()
 addEqn e = Unifier (modify (++[e]))
@@ -110,6 +11,7 @@ addEqn e = Unifier (modify (++[e]))
 getEqns :: Unifier [Equation]
 getEqns = Unifier get
 
+clearEqns :: Unifier ()
 clearEqns = Unifier (put [])
 
 unify :: Type -> [Equation] -> Maybe Type
