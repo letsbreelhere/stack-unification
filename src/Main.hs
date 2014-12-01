@@ -7,7 +7,9 @@ import Inference.Types
 import Unification
 
 program :: [CExp] -> CExp
-program = foldr Compose Empty
+program [] = Empty
+program [x] = x
+program (x:xs) = x `Compose` program xs
 
 testUnifier :: CExp -> Maybe Type
 testUnifier x = inferType x >>= uncurry unify
@@ -19,6 +21,8 @@ testPrograms = map program [ []
                            , replicate 10 Dup
                            , [Dup,I]
                            , [I,Dup]
+                           , [Quote $ program [Dup]]
+                           , [Quote $ program [Dup], I]
                            ]
 
 main :: IO ()
