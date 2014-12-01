@@ -1,4 +1,5 @@
-module Inference where
+module Inference ( inferType
+                 ) where
 
 import Control.Arrow
 import Control.Applicative
