@@ -12,7 +12,8 @@ import Control.Monad.State
 newtype Unifier a = Unifier { unUnifier :: StateT [Equation] Maybe a }
   deriving (Functor, Applicative, Monad)
 
-runUnifier mx s = runStateT (unUnifier mx) s
+runUnifier :: Unifier a -> [Equation] -> Maybe (a, [Equation])
+runUnifier = runStateT . unUnifier
 
 class Subst l r t where
   subst :: l -> r -> t -> Unifier t
@@ -50,11 +51,6 @@ stackOccursIn n (as :# a) = n == a || any stackOccursIn' as
           Fun (xs :# x) (ys :# y) -> n == x || n == y || any stackOccursIn' (xs++ys)
           _ -> False
 
-instance Subst Type Type Equation where
-  subst l r (a :~ b) = do a' <- subst l r a
-                          b' <- subst l r b
-                          return $ a' :~ b'
-
 instance Subst Type Type StackType where
   subst l r (as :# a) = do as' <- mapM (subst l r) as
                            return (as' :# a)
@@ -62,7 +58,7 @@ instance Subst Type Type StackType where
 instance Subst Int StackType Type where
   subst n a t | n `stackOccursIn` a = fail "Cyclic type"
               | otherwise = case t of
-                  Fun b c -> Fun <$> (subst n a b) <*> (subst n a c)
+                  Fun b c -> Fun <$> subst n a b <*> subst n a c
                   _ -> return t
 
 instance Subst Int StackType StackType where
@@ -84,6 +80,9 @@ instance Subst StackType StackType Type where
 
 instance Subst Int StackType Equation where
   subst n s (a :~ b) = (:~) <$> subst n s a <*> subst n s b
+
+instance Subst Type Type Equation where
+  subst l r (a :~ b) = (:~) <$> subst l r a <*> subst l r b
 
 addEqn :: Equation -> Unifier ()
 addEqn e = Unifier (modify (`union` [e]))
