@@ -9,8 +9,10 @@ import Data.List
 import Control.Applicative
 import Control.Monad.State
 
-newtype Unifier a = Unifier { runUnifier :: StateT [Equation] Maybe a }
+newtype Unifier a = Unifier { unUnifier :: StateT [Equation] Maybe a }
   deriving (Functor, Applicative, Monad)
+
+runUnifier mx s = runStateT (unUnifier mx) s
 
 class Subst l r t where
   subst :: l -> r -> t -> Unifier t
