@@ -5,29 +5,16 @@ import Types (Equation(..),Type(..),StackType(..))
 import Unification.Types
 
 unify :: Type -> [Equation] -> Maybe Type
-unify t es = untilSame (unifyIter es t)
+unify t es = fmap fst $ untilSameOn (fmap fst) (unifyIter es t)
 
-untilSame :: Eq a => [a] -> a
-untilSame (x:x':xs) = if x == x' then x else untilSame (x':xs)
+untilSameOn :: Eq b => (a -> b) -> [a] -> a
+untilSameOn f (x:x':xs) = if (f x == f x') then x else untilSameOn f (x':xs)
 
-unifyIter :: [Equation] -> Type -> [Maybe Type]
-unifyIter es t = h : rest
-  where (h,rest) = case runStateT (runUnifier (unify' es t)) es of
-                     Just (t',es') -> (Just t',unifyIter es' t')
-                     Nothing -> (Nothing, repeat Nothing)
+unifyIter :: [Equation] -> Type -> [Maybe (Type, [Equation])]
+unifyIter es t = case runStateT (runUnifier (unify' es t)) es of
+  Just (t',es') -> Just (t',es') : unifyIter es' t'
+  Nothing -> repeat Nothing
 
 unify' :: [Equation] -> Type -> Unifier Type
 unify' [] t = return t
-unify' (e:es) t = unifyStep t e >>= unify' es
-
-unifyStep :: Type -> Equation -> Unifier Type
-unifyStep t e = let s :~ s' = e in case (s,s') of
-  ([] :# a, _) -> subst a s' t
-  (_, [] :# _) -> unifyStep t (s' :~ s)
-  ((l:as) :# a, (r:bs) :# b) -> do es <- getEqns
-                                   clearEqns
-                                   es' <- mapM (subst l r) es
-                                   mapM_ addEqn es'
-                                   t' <- subst l r t
-                                   t'' <- unifyStep t' ((as :# a) :~ (bs :# b))
-                                   return t''
+unify' ((s :~ s'):es) t = subst s s' t >>= unify' es

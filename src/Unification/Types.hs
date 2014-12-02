@@ -4,6 +4,8 @@ module Unification.Types where
 
 import Types
 
+import Data.List
+
 import Control.Applicative
 import Control.Monad.State
 
@@ -68,11 +70,21 @@ instance Subst Int StackType StackType where
       then (xs' ++ as) :# a
       else xs' :# x
 
+instance Subst StackType StackType Type where
+  subst s s' t = case (s,s') of
+    ([] :# a, _) -> subst a s' t
+    (_, [] :# _) -> subst s' s t
+    ((l:as) :# a, (r:bs) :# b) -> do es <- getEqns
+                                     clearEqns
+                                     es' <- mapM (subst l r) es
+                                     mapM_ addEqn (es' ++ [s:~s'])
+                                     subst l r t >>= subst (as :# a) (bs :# b)
+
 instance Subst Int StackType Equation where
   subst n s (a :~ b) = (:~) <$> subst n s a <*> subst n s b
 
 addEqn :: Equation -> Unifier ()
-addEqn e = Unifier (modify (++[e]))
+addEqn e = Unifier (modify (`union` [e]))
 
 getEqns :: Unifier [Equation]
 getEqns = Unifier get

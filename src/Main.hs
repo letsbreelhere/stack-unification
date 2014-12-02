@@ -11,7 +11,7 @@ program [] = Empty
 program [x] = x
 program (x:xs) = x `Compose` program xs
 
-testUnifier :: CExp -> Maybe Type
+{-testUnifier :: CExp -> Maybe (Type, [Equation])-}
 testUnifier x = inferType x >>= uncurry unify
 
 testPrograms :: [CExp]
