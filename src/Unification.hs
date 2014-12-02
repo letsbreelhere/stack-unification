@@ -16,5 +16,6 @@ unifyIter es t = case runUnifier (unifyStep es t) es of
   Nothing -> []
 
 unifyStep :: [Equation] -> Type -> Unifier Type
-unifyStep [] t = return t
-unifyStep ((s :~ s'):es) t = subst s s' t >>= unifyStep es
+unifyStep es t = case es of
+  [] -> return t
+  (s :~ s') : es' -> subst s s' t >>= unifyStep es'
