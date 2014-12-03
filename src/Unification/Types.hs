@@ -2,12 +2,12 @@
 
 module Unification.Types where
 
-import Types
-
-import Data.List
-
+import Control.Lens
 import Control.Applicative
 import Control.Monad.State
+import Data.List
+
+import Types
 
 newtype Unifier a = Unifier { unUnifier :: StateT [Equation] Maybe a }
   deriving (Functor, Applicative, Monad)
@@ -21,7 +21,7 @@ class Subst l r t where
 instance Subst Type Type Type where
   subst l r t
     | l == r = return t
-    | l `occursIn` r = fail "Cyclic type"
+    | l `occursIn` r = fail $ "Cyclic type " ++ show l ++ " = " ++ show r
     | otherwise = case (l,r) of
                     (TVar n,_) -> subst n r t
                     (_,TVar _) -> subst r l t
@@ -56,10 +56,12 @@ instance Subst Type Type StackType where
                            return (as' :# a)
 
 instance Subst Int StackType Type where
-  subst n a t | n `stackOccursIn` a = fail "Cyclic type"
-              | otherwise = case t of
-                  Fun b c -> Fun <$> subst n a b <*> subst n a c
-                  _ -> return t
+  subst n a@(xs :# x) t
+    | n == x && null xs = return t
+    | n `stackOccursIn` a = fail $ "Cyclic type " ++ showStack n ++ " = " ++ show a
+    | otherwise = case t of
+        Fun b c -> Fun <$> subst n a b <*> subst n a c
+        _ -> return t
 
 instance Subst Int StackType StackType where
   subst n (as :# a) (xs :# x) = do
@@ -69,13 +71,18 @@ instance Subst Int StackType StackType where
       else xs' :# x
 
 instance Subst StackType StackType Type where
+  subst s s' t | s == s' = return t
   subst s s' t = case (s,s') of
-    ([] :# a, _) -> subst a s' t
+    ([] :# a, _) -> do es <- getEqns
+                       clearEqns
+                       es' <- mapM (subst a s') es
+                       mapM_ addEqn es'
+                       subst a s' t
     (_, [] :# _) -> subst s' s t
     ((l:as) :# a, (r:bs) :# b) -> do es <- getEqns
                                      clearEqns
                                      es' <- mapM (subst l r) es
-                                     mapM_ addEqn (es' ++ [s:~s'])
+                                     mapM_ addEqn es'
                                      subst l r t >>= subst (as :# a) (bs :# b)
 
 instance Subst Int StackType Equation where
@@ -92,3 +99,6 @@ getEqns = Unifier get
 
 clearEqns :: Unifier ()
 clearEqns = Unifier (put [])
+
+deleteEqn :: Equation -> Unifier ()
+deleteEqn = Unifier . modify . delete
