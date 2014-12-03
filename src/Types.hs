@@ -15,7 +15,7 @@ instance Show Type where
     | n < 26    = [toEnum (fromEnum n + fromEnum 'a')]
     | otherwise = reverse $ show (TVar (n `mod` 26)) ++ show (TVar $ n `div` 26 - 1)
   show Concrete = "int"
-  show (Fun (as :# a) (bs :# b)) = "(" ++ unwords (map show as ++ [showStack a]) ++ " -> " ++ unwords (map show bs ++ [showStack b]) ++ ")"
+  show (Fun a b) = "(" ++ show a ++ " -> " ++ show b ++ ")"
 
 showStack :: Int -> String
 showStack = map toUpper . show . TVar
