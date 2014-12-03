@@ -1,5 +1,6 @@
 module Unification where
 
+import Data.List (union)
 import Types (Equation(..),Type(..))
 import Unification.Types
 

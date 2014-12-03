@@ -22,7 +22,7 @@ testPrograms = map program [ []
                            , [Dup,I]
                            , [I,Dup]
                            , [Quote $ program [Dup]]
-                           , [Quote $ program [Dup], I]
+                           , [Quote $ program [Dup], I, Dup]
                            ]
 
 main :: IO ()

@@ -24,7 +24,7 @@ instance Show StackType where
   show (as :# a) = unwords $ showStack a : map show as
 
 data Equation = StackType :~ StackType
-              deriving (Eq)
+  deriving (Eq)
 
 instance Show Equation where
   show (n :~ s) = show n ++ " = " ++ show s
