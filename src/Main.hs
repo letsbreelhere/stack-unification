@@ -25,6 +25,7 @@ testPrograms = map program [ []
                            , [I,Dup]
                            , [Quote $ program [Dup]]
                            , [Quote $ program [Dup], I, Dup]
+                           , [SomeValue, I]
                            ]
 
 main :: IO ()
