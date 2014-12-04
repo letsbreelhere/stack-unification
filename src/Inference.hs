@@ -16,6 +16,10 @@ typeOf (Compose l r) = do (a, b) <- typeOfFunction l
                           (c, d) <- typeOfFunction r
                           addConstraint b c
                           return (Fun a d)
+typeOf (Bool _)   = [] --> [Scalar "bool"]
+typeOf (Int _)    = [] --> [Scalar "int"]
+typeOf (Char _)   = [] --> [Scalar "char"]
+typeOf (String _) = [] --> [Scalar "string"]
 typeOf (Quote e) = do t <- typeOf e
                       [] --> [t]
 typeOf Empty = [] --> []

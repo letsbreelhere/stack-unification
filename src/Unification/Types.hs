@@ -29,6 +29,7 @@ instance Subst Type Type Type where
                     (_,TVar _) -> subst r l t
                     (Fun a b, Fun c d) -> do mapM_ addEqn [a :~ c, b :~ d]
                                              return t
+                    (Scalar _, _) -> failWith $ "Couldn't match " ++ show l ++ " with " ++ show r
                     _ -> return t
 
 instance Subst Int Type Type where

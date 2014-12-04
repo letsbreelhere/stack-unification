@@ -19,11 +19,15 @@ testPrograms = map program [ []
                            , [dup_]
                            , [dup_, dup_]
                            , replicate 10 dup_
-                           , [dup_,i_]
                            , [i_,dup_]
                            , [Quote dup_]
                            , [Quote dup_, i_, dup_]
                            , [Quote $ Quote $ Quote $ dup_]
+                           , [Int 10, Quote i_, dup_]
+                           , [Int 10, Bool True, dup_, dup_]
+                           -- Uninferencable expressions
+                           , [dup_,i_]
+                           , [Int 10, i_]
                            ]
   where dup_ = Term "dup"
         i_ = Term "i"

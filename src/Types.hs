@@ -28,7 +28,7 @@ instance Show CExp where
   show (String s) = show s
 
 data Type = TVar Int
-          | Concrete
+          | Scalar String
           | Fun StackType StackType
   deriving (Eq)
 
@@ -36,7 +36,7 @@ instance Show Type where
   show (TVar n)
     | n < 26    = [toEnum (fromEnum n + fromEnum 'a')]
     | otherwise = reverse $ show (TVar (n `mod` 26)) ++ show (TVar $ n `div` 26 - 1)
-  show Concrete = "int"
+  show (Scalar t) = t
   show (Fun a b) = show a ++ " -> " ++ show b
 
 showStack :: Int -> String
