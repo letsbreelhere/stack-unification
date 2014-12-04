@@ -23,5 +23,6 @@ executable catype
   build-depends:       base >=4.7 && <4.8
                      , mtl >=2.1 && <2.2
                      , lens
+                     , containers
   hs-source-dirs:      src
   default-language:    Haskell2010

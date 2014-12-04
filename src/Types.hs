@@ -5,6 +5,28 @@ import Data.Char (toUpper)
 data StackType = [Type] :# Int
   deriving (Eq)
 
+data CExp = Term String
+          | Bool Bool
+          | Int Int
+          | Char Char
+          | String String
+          | Compose CExp CExp
+          | Quote CExp
+          | Empty
+
+instance Show CExp where
+  show (Term s) = s
+  show (Compose a b) = case (a,b) of
+    (Empty,_) -> show b
+    (_,Empty) -> show a
+    _ -> show a ++ " " ++ show b
+  show (Quote e) = "[" ++ show e ++ "]"
+  show Empty = ""
+  show (Bool b) = if b then "#T" else "#F"
+  show (Int i) = show i
+  show (Char c) = ['`', c, '`']
+  show (String s) = show s
+
 data Type = TVar Int
           | Concrete
           | Fun StackType StackType

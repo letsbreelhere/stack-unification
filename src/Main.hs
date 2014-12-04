@@ -16,16 +16,17 @@ testUnifier x = inferType x >>= uncurry unify
 
 testPrograms :: [CExp]
 testPrograms = map program [ []
-                           , [Dup]
-                           , [Dup, Dup]
-                           , replicate 10 Dup
-                           , [Dup,I]
-                           , [I,Dup]
-                           , [Quote Dup]
-                           , [Quote Dup, I, Dup]
-                           , [SomeValue, I]
-                           , [Quote $ Quote $ Quote $ Dup]
+                           , [dup_]
+                           , [dup_, dup_]
+                           , replicate 10 dup_
+                           , [dup_,i_]
+                           , [i_,dup_]
+                           , [Quote dup_]
+                           , [Quote dup_, i_, dup_]
+                           , [Quote $ Quote $ Quote $ dup_]
                            ]
+  where dup_ = Term "dup"
+        i_ = Term "i"
 
 main :: IO ()
 main = do
