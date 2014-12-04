@@ -11,9 +11,10 @@ program [] = Empty
 program [x] = x
 program (x:xs) = x `Compose` program xs
 
-testUnifier :: CExp -> Maybe Type
-testUnifier x = do (t, es) <- inferType x
-                   unify t es
+testUnifier :: CExp -> Either String Type
+testUnifier x = case inferType x of
+  Nothing -> Left "Inference failed"
+  Just (t,es) -> unify t es
 
 testPrograms :: [CExp]
 testPrograms = map program [ []

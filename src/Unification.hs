@@ -4,7 +4,7 @@ import Control.Applicative
 import Types (Equation(..),Type(..))
 import Unification.Types
 
-unify :: Type -> [Equation] -> Maybe Type
+unify :: Type -> [Equation] -> Either String Type
 unify t es = fst <$> runUnifier (unify' t) es
 
 unify' :: Type -> Unifier Type

@@ -8,11 +8,14 @@ import Data.List
 
 import Types
 
-newtype Unifier a = Unifier { unUnifier :: StateT [Equation] Maybe a }
+newtype Unifier a = Unifier { unUnifier :: StateT [Equation] (Either String) a }
   deriving (Functor, Applicative, Monad)
 
-runUnifier :: Unifier a -> [Equation] -> Maybe (a, [Equation])
+runUnifier :: Unifier a -> [Equation] -> Either String (a, [Equation])
 runUnifier = runStateT . unUnifier
+
+failWith :: String -> Unifier a
+failWith = Unifier . lift . Left
 
 class Subst l r t where
   subst :: l -> r -> t -> Unifier t
@@ -21,7 +24,7 @@ instance Subst Type Type Type where
   subst l r t
     | l == r = return t
     | otherwise = case (l,r) of
-                    (TVar n,_) | n `occursIn` r -> fail $ "Cyclic type " ++ show l ++ " = " ++ show r
+                    (TVar n,_) | n `occursIn` r -> failWith $ "Cyclic type " ++ show l ++ " = " ++ show r
                                | otherwise -> subst n r t
                     (_,TVar _) -> subst r l t
                     (Fun a b, Fun c d) -> do mapM_ addEqn [a :~ c, b :~ d]
@@ -56,7 +59,7 @@ instance Subst Type Type StackType where
 instance Subst Int StackType Type where
   subst n a@(xs :# x) t
     | n == x && null xs = return t
-    | n `stackOccursIn` a = fail $ "Cyclic type " ++ showStack n ++ " = " ++ show a
+    | n `stackOccursIn` a = failWith $ "Cyclic type " ++ showStack n ++ " = " ++ show a
     | otherwise = case t of
         Fun b c -> Fun <$> subst n a b <*> subst n a c
         _ -> return t
