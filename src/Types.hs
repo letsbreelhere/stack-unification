@@ -1,6 +1,7 @@
 module Types where
 
 import Data.Char (toUpper)
+import Data.Monoid
 
 data StackType = [Type] :# Int
   deriving (Eq)
@@ -26,6 +27,10 @@ instance Show CExp where
   show (Int i) = show i
   show (Char c) = ['`', c, '`']
   show (String s) = show s
+
+instance Monoid CExp where
+  mappend = Compose
+  mempty = Empty
 
 data Type = TVar Int
           | Scalar String
