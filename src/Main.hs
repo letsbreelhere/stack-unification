@@ -34,7 +34,6 @@ testPrograms = map program [ []
 
 main :: IO ()
 main = do
-  putStrLn "--- full inference test ---"
   forM_ testPrograms $ \e -> do
     let t = testUnifier e
     putStrLn . unwords $ [show e, ":", show t]

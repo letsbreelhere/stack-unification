@@ -43,7 +43,7 @@ showStack :: Int -> String
 showStack = map toUpper . show . TVar
 
 instance Show StackType where
-  show (as :# a) = unwords $ showStack a : map showInner as
+  show (as :# a) = unwords $ showStack a : map showInner (reverse as)
     where showInner t = case t of
             Fun _ _ -> "(" ++ show t ++ ")"
             _ -> show t
