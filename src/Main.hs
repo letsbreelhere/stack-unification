@@ -28,8 +28,7 @@ testPrograms = [ ""
                ]
 
 main :: IO ()
-main = do
-  forM_ testPrograms $ \s -> do
-    let mParsed = parseExpression s
-        t = either (Left . show) testUnifier mParsed
-    putStrLn . unwords $ [s, ":", show t]
+main = forM_ testPrograms $ \s -> do
+  let mParsed = parseExpression s
+      t = either (Left . show) testUnifier mParsed
+  putStrLn . unwords $ [s, ":", show t]
