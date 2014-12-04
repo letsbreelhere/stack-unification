@@ -23,7 +23,7 @@ instance Show CExp where
     _ -> show a ++ " " ++ show b
   show (Quote e) = "[" ++ show e ++ "]"
   show Empty = ""
-  show (Bool b) = if b then "#T" else "#F"
+  show (Bool b) = if b then "#t" else "#f"
   show (Int i) = show i
   show (Char c) = ['`', c, '`']
   show (String s) = show s

@@ -19,7 +19,7 @@ word = Term <$> many1 letter
 
 literal :: Parser CExp
 literal = choice [bool_,int_,char_,string_, quote_]
-  where bool_ = char '#' *> (Bool <$> choice [True <$ char 'T', False <$ char 'F'])
+  where bool_ = char '#' *> (Bool <$> choice [True <$ char 't', False <$ char 'f'])
         int_ = Int . read <$> many1 digit
         char_ = Char <$> between (char '\'') (char '\'') anyChar
         string_ = String <$> between (char '"') (char '"') (many inner)

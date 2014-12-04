@@ -19,7 +19,7 @@ testPrograms = [ ""
                , "[dup]"
                , "[dup] i dup"
                , "[[[dup]]]"
-               , "10 #T dup dup"
+               , "10 #t dup dup"
                -- Uninferencable expressions
                , "dup i"
                , "10 i"
