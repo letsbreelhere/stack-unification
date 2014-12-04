@@ -2,7 +2,6 @@
 
 module Unification.Types where
 
-import Control.Lens
 import Control.Applicative
 import Control.Monad.State
 import Data.List

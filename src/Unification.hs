@@ -1,12 +1,11 @@
-module Unification where
+module Unification (unify) where
 
-import Data.List (union)
-import Debug.Trace
+import Control.Applicative
 import Types (Equation(..),Type(..))
 import Unification.Types
 
 unify :: Type -> [Equation] -> Maybe Type
-unify t es = fmap fst $ runUnifier (unify' t) es
+unify t es = fst <$> runUnifier (unify' t) es
 
 unify' :: Type -> Unifier Type
 unify' t = do
