@@ -21,9 +21,10 @@ testPrograms = map program [ []
                            , replicate 10 Dup
                            , [Dup,I]
                            , [I,Dup]
-                           , [Quote $ program [Dup]]
-                           , [Quote $ program [Dup], I, Dup]
+                           , [Quote Dup]
+                           , [Quote Dup, I, Dup]
                            , [SomeValue, I]
+                           , [Quote $ Quote $ Quote $ Dup]
                            ]
 
 main :: IO ()

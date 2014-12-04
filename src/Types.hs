@@ -15,13 +15,16 @@ instance Show Type where
     | n < 26    = [toEnum (fromEnum n + fromEnum 'a')]
     | otherwise = reverse $ show (TVar (n `mod` 26)) ++ show (TVar $ n `div` 26 - 1)
   show Concrete = "int"
-  show (Fun a b) = "(" ++ show a ++ " -> " ++ show b ++ ")"
+  show (Fun a b) = show a ++ " -> " ++ show b
 
 showStack :: Int -> String
 showStack = map toUpper . show . TVar
 
 instance Show StackType where
-  show (as :# a) = unwords $ showStack a : map show as
+  show (as :# a) = unwords $ showStack a : map showInner as
+    where showInner t = case t of
+            Fun _ _ -> "(" ++ show t ++ ")"
+            _ -> show t
 
 data Equation = StackType :~ StackType
   deriving (Eq)
