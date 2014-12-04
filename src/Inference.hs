@@ -1,9 +1,9 @@
-module Inference where
+module Inference (inferType) where
 
 import Control.Arrow
 import Control.Applicative
 import Control.Lens
-import Control.Monad.State (runStateT)
+import Control.Monad.State (runStateT,lift)
 import Inference.Types
 import Types
 
@@ -34,8 +34,8 @@ typeOf I        = do s <- freshStackVar
                      s' <- freshStackVar
                      let top = Fun ([] :# s) ([] :# s')
                      return (Fun ([top] :# s) ([] :# s'))
-typeOf (Compose l r) = do Fun a b <- typeOf l
-                          Fun c d <- typeOf r
+typeOf (Compose l r) = do (a, b) <- typeOfFunction l
+                          (c, d) <- typeOfFunction r
                           addConstraint b c
                           return (Fun a d)
 typeOf (Quote e) = do t <- typeOf e
@@ -43,6 +43,16 @@ typeOf (Quote e) = do t <- typeOf e
 typeOf SomeValue = return Concrete
 typeOf Empty = [] --> []
 
-inferType :: CExp -> Maybe (Type,[Equation])
+typeOfFunction :: CExp -> Inference (StackType, StackType)
+typeOfFunction e = do
+  t <- typeOf e
+  case t of
+    Fun a b -> return (a,b)
+    _ -> failWith $ "Expected " ++ show e ++ " to be a function, but is actually " ++ show t
+
+inferType :: CExp -> Either String (Type,[Equation])
 inferType e = do (t,s) <- runStateT (typeOf e) defaultState
                  return (t,s^.eqns)
+
+failWith :: String -> Inference a
+failWith = lift . Left

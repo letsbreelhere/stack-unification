@@ -12,9 +12,7 @@ program [x] = x
 program (x:xs) = x `Compose` program xs
 
 testUnifier :: CExp -> Either String Type
-testUnifier x = case inferType x of
-  Nothing -> Left "Inference failed"
-  Just (t,es) -> unify t es
+testUnifier x = inferType x >>= uncurry unify
 
 testPrograms :: [CExp]
 testPrograms = map program [ []

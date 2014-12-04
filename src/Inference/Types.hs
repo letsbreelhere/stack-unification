@@ -46,4 +46,4 @@ makeLenses ''IState
 defaultState :: IState
 defaultState = IState 0 0 []
 
-type Inference a = StateT IState Maybe a
+type Inference a = StateT IState (Either String) a
