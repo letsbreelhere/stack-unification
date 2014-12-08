@@ -14,6 +14,7 @@ data CExp = Term String
           | Compose CExp CExp
           | Quote CExp
           | Empty
+          deriving (Eq)
 
 instance Show CExp where
   show (Term s) = s
