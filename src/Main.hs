@@ -13,7 +13,9 @@ testUnifier = inferType >=> uncurry unify
 testPrograms :: [String]
 testPrograms = [ ""
                , "dup"
+               , "dup -- This is a line comment"
                , "dup dup"
+               , "dup {{ This is a block comment }} dup"
                , unwords $ replicate 10 "dup"
                , "i dup"
                , "[dup]"
@@ -24,7 +26,7 @@ testPrograms = [ ""
                , "dup i"
                , "10 i"
                -- Unparseable expressions
-               , "000nope000"
+               , "#wrong"
                ]
 
 main :: IO ()

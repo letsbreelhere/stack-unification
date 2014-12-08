@@ -3,6 +3,7 @@ module Parser (parseExpression) where
 import Data.Foldable (fold)
 import Types (CExp(..))
 import Text.Parsec
+import Text.Parsec.Token
 import Control.Applicative ((<*),(*>),(<$>),(<$))
 
 parseExpression :: String -> Either ParseError CExp
@@ -10,19 +11,37 @@ parseExpression = runParser (cExp <* eof) () ""
 
 type Parser a = Parsec String () a
 
+languageDef :: LanguageDef ()
+languageDef =
+  LanguageDef { commentStart = "{{"
+              , commentEnd = "}}"
+              , commentLine = "--"
+              , nestedComments = False
+              , identStart = letter <|> oneOf "~!@$%^&*_+`-=,./<>?:"
+              , identLetter = alphaNum <|> oneOf "~!@#$%^&*_+`-=,./<>?:"
+              , opStart = oneOf []
+              , opLetter = oneOf []
+              , reservedNames = ["#t", "#f"]
+              , reservedOpNames = ["[", "]"]
+              , caseSensitive = True
+              }
+
+tokenParser :: TokenParser ()
+tokenParser = makeTokenParser languageDef
+
 cExp :: Parser CExp
-cExp = fold <$> inner `sepBy` many1 space
+cExp = fold <$> many inner
   where inner = word <|> literal
 
 word :: Parser CExp
-word = Term <$> many1 letter
+word = Term <$> identifier tokenParser
 
 literal :: Parser CExp
 literal = choice [bool_,int_,char_,string_, quote_]
-  where bool_ = char '#' *> (Bool <$> choice [True <$ char 't', False <$ char 'f'])
-        int_ = Int . read <$> many1 digit
-        char_ = Char <$> between (char '\'') (char '\'') anyChar
-        string_ = String <$> between (char '"') (char '"') (many inner)
-          where inner = escaped <|> noneOf "\""
-                escaped = char '\\' *> anyChar
-        quote_ = Quote <$> between (char '[') (char ']') cExp
+  where bool_ = choice [ Bool True  <$ reserved tokenParser "#t"
+                       , Bool False <$ reserved tokenParser "#f"
+                       ]
+        int_ = Int . fromInteger <$> integer tokenParser
+        char_ = Char <$> charLiteral tokenParser
+        string_ = String <$> stringLiteral tokenParser
+        quote_ = Quote <$> brackets tokenParser cExp
